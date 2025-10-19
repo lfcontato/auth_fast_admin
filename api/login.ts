@@ -9,6 +9,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const base = getBaseApiFromEnv();
     const upstream = await fetch(`${base}/admin/auth/token`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username, password }) });
     const data = await upstream.json().catch(() => ({} as any));
+    // Suporte a MFA: backend pode retornar 202 Accepted com { mfa_required, mfa_tx }
+    if (upstream.status === 202) {
+      return res.status(202).json(data);
+    }
     if (!upstream.ok) return res.status(upstream.status).json(data);
     const { access_token, refresh_token } = data || {};
     if (!access_token || !refresh_token) return res.status(502).json({ success: false, message: 'Resposta inválida do servidor de autenticação' });
@@ -18,4 +22,3 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(500).json({ success: false, message: 'Erro interno', detail: String(err?.message || err) });
   }
 }
-

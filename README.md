@@ -24,3 +24,6 @@ Como rodar (local)
 Notas
 - Cookie: HttpOnly, Path=/, SameSite=Lax (Secure em produção).
 - A página restaura a sessão automaticamente no carregamento via `/api/refresh`.
+
+Guias úteis
+- Guia de Administradores (rotas + cURL): ver `admins.md`.

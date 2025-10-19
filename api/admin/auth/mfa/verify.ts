@@ -1,12 +1,12 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { getBaseApiFromEnv } from '../../_shared';
+import { getBaseApiFromEnv } from '../../../_shared';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') return res.status(405).json({ success: false, message: 'Method Not Allowed' });
   try {
     const base = getBaseApiFromEnv();
     const bodyObj = typeof req.body === 'object' && req.body ? req.body : (req.body ? JSON.parse(req.body) : {});
-    const upstream = await fetch(`${base}/admin/auth/password-recovery`, {
+    const upstream = await fetch(`${base}/admin/auth/mfa/verify`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(bodyObj ?? {}),

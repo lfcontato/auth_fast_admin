@@ -28,6 +28,14 @@
                   <button id="btn-logout" class="btn btn-outline-secondary" type="button">Sair</button>
                 </div>
               </form>
+              <div id="mfa-area" class="mt-2" style="display:none;">
+                <div class="alert alert-info py-2 mb-2">MFA habilitado: digite o código enviado por e‑mail.</div>
+                <div class="input-group" style="max-width: 360px;">
+                  <input id="mfa-code" class="form-control" placeholder="Código MFA" inputmode="numeric" autocomplete="one-time-code" />
+                  <button id="btn-mfa-verify" class="btn btn-success" type="button">Verificar</button>
+                </div>
+                <div class="form-text">A sessão será liberada após verificação.</div>
+              </div>
               <div id="defaults-info" class="mt-2 text-secondary small" style="display:none;"></div>
               <div class="mt-2 small text-muted">refresh_token fica em cookie HttpOnly (Path=/; Lax). access_token só em memória.</div>
             </div>
@@ -96,6 +104,92 @@
               <div class="mt-2 small text-muted">
                 Regras: criador deve ter papel superior; e-mail/username únicos; senha mínima 8.
               </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="row g-4 mt-1">
+        <div class="col-12">
+          <div class="card">
+            <div class="card-header">Alterar Papel (system_role)</div>
+            <div class="card-body">
+              <form id="form-admin-role" class="row gy-2 gx-2 align-items-end">
+                <div class="col-12 col-md-3">
+                  <label class="form-label" for="role-admin-id">Admin ID</label>
+                  <input id="role-admin-id" type="number" min="1" step="1" class="form-control" placeholder="ex.: 2" required />
+                </div>
+                <div class="col-12 col-md-3">
+                  <label class="form-label" for="role-new">Novo Papel</label>
+                  <select id="role-new" class="form-select">
+                    <option value="user">user</option>
+                    <option value="admin">admin</option>
+                    <option value="root">root</option>
+                    <option value="guest">guest</option>
+                  </select>
+                </div>
+                <div class="col-12 col-md-2">
+                  <button class="btn btn-primary w-100" type="submit">Alterar</button>
+                </div>
+              </form>
+              <div class="mt-2 small text-muted">PATCH /admin/{admin_id}/system-role (requer Authorization: Bearer).</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="row g-4 mt-1">
+        <div class="col-12">
+          <div class="card">
+            <div class="card-header">Alterar Plano (subscription_plan)</div>
+            <div class="card-body">
+              <form id="form-admin-plan" class="row gy-2 gx-2 align-items-end">
+                <div class="col-12 col-md-3">
+                  <label class="form-label" for="plan-admin-id">Admin ID</label>
+                  <input id="plan-admin-id" type="number" min="1" step="1" class="form-control" placeholder="ex.: 2" required />
+                </div>
+                <div class="col-12 col-md-4">
+                  <label class="form-label" for="plan-new">Novo Plano</label>
+                  <select id="plan-new" class="form-select">
+                    <option value="minute">minute</option>
+                    <option value="hourly">hourly</option>
+                    <option value="daily">daily</option>
+                    <option value="trial">trial</option>
+                    <option value="monthly">monthly</option>
+                    <option value="semiannual">semiannual</option>
+                    <option value="annual">annual</option>
+                    <option value="lifetime">lifetime</option>
+                  </select>
+                </div>
+                <div class="col-12 col-md-2">
+                  <button class="btn btn-primary w-100" type="submit">Alterar</button>
+                </div>
+              </form>
+              <div class="mt-2 small text-muted">PATCH /admin/{admin_id}/subscription-plan (requer Authorization: Bearer).</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="row g-4 mt-1">
+        <div class="col-12">
+          <div class="card">
+            <div class="card-header">Alterar Senha (própria)</div>
+            <div class="card-body">
+              <form id="form-admin-password" class="row gy-2 gx-2 align-items-end">
+                <div class="col-12 col-md-4">
+                  <label class="form-label" for="pwd-current">Senha atual</label>
+                  <input id="pwd-current" type="password" class="form-control" placeholder="sua senha atual" required />
+                </div>
+                <div class="col-12 col-md-4">
+                  <label class="form-label" for="pwd-new">Nova senha</label>
+                  <input id="pwd-new" type="password" class="form-control" placeholder="nova senha" required />
+                </div>
+                <div class="col-12 col-md-2">
+                  <button class="btn btn-primary w-100" type="submit">Alterar</button>
+                </div>
+              </form>
+              <div class="mt-2 small text-muted">PATCH /admin/password (requer Authorization: Bearer).</div>
             </div>
           </div>
         </div>

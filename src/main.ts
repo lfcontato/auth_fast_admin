@@ -1,5 +1,6 @@
 let accessToken: string | null = null;
 let refreshTimer: number | null = null;
+let mfaTx: string | null = null;
 
 const $ = (sel: string) => document.querySelector(sel) as HTMLElement | null;
 const setText = (sel: string, text: string) => { const el = $(sel); if (el) el.textContent = text; };
@@ -45,15 +46,64 @@ async function apiFetch(input: RequestInfo, init?: RequestInit): Promise<Respons
   return res;
 }
 
+function mapAuthCode(code?: string): string | null {
+  if (!code || typeof code !== 'string') return null;
+  const map: Record<string, string> = {
+    // Comuns
+    'AUTH_401_005': 'Token ausente ou inválido',
+    'HTTP_404': 'Rota não encontrada no backend',
+    // System-role
+    'AUTH_400_020': 'JSON inválido ou valor de papel inválido',
+    'AUTH_403_010': 'Papel insuficiente para alterar este alvo ou novo papel',
+    'AUTH_404_002': 'Administrador alvo não encontrado',
+    // Subscription-plan
+    'AUTH_400_021': 'Plano inválido ou ausente',
+    'AUTH_403_011': 'Permissão insuficiente para definir este plano',
+    // Alterar senha
+    'AUTH_400_030': 'JSON inválido ou campos ausentes',
+    'AUTH_400_031': 'Campos obrigatórios ausentes',
+    'AUTH_400_005': 'Senha nova fora da política de segurança',
+    'AUTH_401_006': 'Senha atual inválida',
+    'AUTH_404_001': 'Administrador não encontrado',
+  };
+  return map[code] || null;
+}
+
 async function login(username: string, password: string) {
   const r = await fetch('/api/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username, password }), credentials: 'same-origin' });
   const j = await r.json().catch(() => ({}));
   setText('#last-response', JSON.stringify(j, null, 2));
+  if (r.status === 202 && j?.mfa_required) {
+    // Habilita UI de MFA e guarda a transação
+    mfaTx = j?.mfa_tx || null;
+    const mfaArea = document.getElementById('mfa-area'); if (mfaArea) mfaArea.style.display = '';
+    const codeInput = document.getElementById('mfa-code') as HTMLInputElement | null; if (codeInput) codeInput.focus();
+    return; // não define tokens ainda
+  }
   if (!r.ok) throw new Error(j?.message || `Login falhou (${r.status})`);
   accessToken = j.access_token || null;
   setText('#access-token', accessToken ?? '—');
   setText('#jwt-payload', JSON.stringify(decodeJwtPayload(accessToken || ''), null, 2));
   if (accessToken) scheduleAutoRefresh(accessToken);
+}
+
+async function verifyMfa(code: string) {
+  if (!mfaTx) throw new Error('Transação MFA ausente. Faça login novamente.');
+  const r = await fetch('/api/admin/auth/mfa/verify', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ mfa_tx: mfaTx, code }), credentials: 'same-origin'
+  });
+  const j = await r.json().catch(() => ({}));
+  setText('#last-response', JSON.stringify(j, null, 2));
+  if (!r.ok) throw new Error(j?.message || `MFA falhou (${r.status})`);
+  // sucesso → tokens
+  accessToken = j.access_token || null;
+  setText('#access-token', accessToken ?? '—');
+  setText('#jwt-payload', JSON.stringify(decodeJwtPayload(accessToken || ''), null, 2));
+  if (accessToken) scheduleAutoRefresh(accessToken);
+  // Esconde área de MFA e limpa tx
+  const mfaArea = document.getElementById('mfa-area'); if (mfaArea) mfaArea.style.display = 'none';
+  mfaTx = null;
 }
 
 async function forceRefresh() {
@@ -130,6 +180,24 @@ window.addEventListener('DOMContentLoaded', () => {
     const adminCard = formAdmin?.closest('.card') as HTMLElement | null;
     const adminHeader = adminCard ? adminCard.querySelector('.card-header') as HTMLElement | null : null;
     addLock(adminHeader);
+
+    // Card "Alterar Papel" (requer token)
+    const formRole = document.getElementById('form-admin-role');
+    const roleCard = formRole?.closest('.card') as HTMLElement | null;
+    const roleHeader = roleCard ? roleCard.querySelector('.card-header') as HTMLElement | null : null;
+    addLock(roleHeader);
+
+    // Card "Alterar Plano" (requer token)
+    const formPlan = document.getElementById('form-admin-plan');
+    const planCard = formPlan?.closest('.card') as HTMLElement | null;
+    const planHeader = planCard ? planCard.querySelector('.card-header') as HTMLElement | null : null;
+    addLock(planHeader);
+
+    // Card "Alterar Senha" (requer token)
+    const formPwd = document.getElementById('form-admin-password');
+    const pwdCard = formPwd?.closest('.card') as HTMLElement | null;
+    const pwdHeader = pwdCard ? pwdCard.querySelector('.card-header') as HTMLElement | null : null;
+    addLock(pwdHeader);
   } catch {}
 
   try {
@@ -272,6 +340,15 @@ window.addEventListener('DOMContentLoaded', () => {
     const p = (document.getElementById('password') as HTMLInputElement)?.value ?? '';
     try { await login(u, p); } catch (err: any) { setText('#last-response', String(err?.message || err)); }
   });
+  document.getElementById('btn-mfa-verify')?.addEventListener('click', async () => {
+    try {
+      const code = (document.getElementById('mfa-code') as HTMLInputElement)?.value?.trim() || '';
+      if (!code) { setText('#last-response', 'Informe o código MFA.'); return; }
+      await verifyMfa(code);
+    } catch (err: any) {
+      setText('#last-response', String(err?.message || err));
+    }
+  });
   document.getElementById('btn-logout')?.addEventListener('click', () => clearSession());
   document.getElementById('btn-health')?.addEventListener('click', () => health());
   document.getElementById('btn-refresh')?.addEventListener('click', () => forceRefresh());
@@ -305,6 +382,85 @@ window.addEventListener('DOMContentLoaded', () => {
       const r = await apiFetch('/api/admin', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload), credentials: 'same-origin' });
       const j = await r.json().catch(() => ({}));
       setText('#last-response', JSON.stringify(j, null, 2));
+    } catch (err: any) {
+      setText('#last-response', String(err?.message || err));
+    }
+  });
+
+  // Alterar papel (system_role) autenticado
+  const formAdminRole = document.getElementById('form-admin-role') as HTMLFormElement | null;
+  formAdminRole?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const idRaw = (document.getElementById('role-admin-id') as HTMLInputElement)?.value?.trim();
+    const newRole = (document.getElementById('role-new') as HTMLSelectElement)?.value || 'user';
+    try {
+      const id = Number.parseInt(idRaw || '', 10);
+      if (!Number.isFinite(id) || id <= 0) throw new Error('Admin ID inválido');
+      const r = await apiFetch(`/api/admin/${encodeURIComponent(String(id))}/system-role`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ system_role: newRole }),
+        credentials: 'same-origin',
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        const msg = mapAuthCode(j?.code) || j?.message || `Erro (${r.status})`;
+        setText('#last-response', `${msg}\n${JSON.stringify(j, null, 2)}`);
+      } else {
+        setText('#last-response', JSON.stringify(j, null, 2));
+      }
+    } catch (err: any) {
+      setText('#last-response', String(err?.message || err));
+    }
+  });
+
+  // Alterar plano (subscription_plan) autenticado
+  const formAdminPlan = document.getElementById('form-admin-plan') as HTMLFormElement | null;
+  formAdminPlan?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const idRaw = (document.getElementById('plan-admin-id') as HTMLInputElement)?.value?.trim();
+    const newPlan = (document.getElementById('plan-new') as HTMLSelectElement)?.value || 'monthly';
+    try {
+      const id = Number.parseInt(idRaw || '', 10);
+      if (!Number.isFinite(id) || id <= 0) throw new Error('Admin ID inválido');
+      const r = await apiFetch(`/api/admin/${encodeURIComponent(String(id))}/subscription-plan`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ subscription_plan: newPlan }),
+        credentials: 'same-origin',
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        const msg = mapAuthCode(j?.code) || j?.message || `Erro (${r.status})`;
+        setText('#last-response', `${msg}\n${JSON.stringify(j, null, 2)}`);
+      } else {
+        setText('#last-response', JSON.stringify(j, null, 2));
+      }
+    } catch (err: any) {
+      setText('#last-response', String(err?.message || err));
+    }
+  });
+
+  // Alterar senha (própria)
+  const formAdminPassword = document.getElementById('form-admin-password') as HTMLFormElement | null;
+  formAdminPassword?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const current_password = (document.getElementById('pwd-current') as HTMLInputElement)?.value ?? '';
+    const new_password = (document.getElementById('pwd-new') as HTMLInputElement)?.value ?? '';
+    try {
+      const r = await apiFetch(`/api/admin/password`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ current_password, new_password }),
+        credentials: 'same-origin',
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        const msg = mapAuthCode(j?.code) || j?.message || `Erro (${r.status})`;
+        setText('#last-response', `${msg}\n${JSON.stringify(j, null, 2)}`);
+      } else {
+        setText('#last-response', JSON.stringify(j, null, 2));
+      }
     } catch (err: any) {
       setText('#last-response', String(err?.message || err));
     }

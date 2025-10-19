@@ -2,13 +2,22 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { getBaseApiFromEnv } from '../../_shared';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  if (req.method !== 'POST') return res.status(405).json({ success: false, message: 'Method Not Allowed' });
+  if (req.method !== 'PATCH') return res.status(405).json({ success: false, message: 'Method Not Allowed' });
+
+  const auth = req.headers['authorization'] || req.headers['Authorization' as any];
+  if (!auth || Array.isArray(auth)) {
+    return res.status(401).json({ success: false, message: 'Authorization header ausente' });
+  }
+
+  const adminId = Array.isArray(req.query?.admin_id) ? req.query?.admin_id[0] : (req.query?.admin_id as string | undefined);
+  if (!adminId) return res.status(400).json({ success: false, message: 'admin_id ausente' });
+
   try {
     const base = getBaseApiFromEnv();
     const bodyObj = typeof req.body === 'object' && req.body ? req.body : (req.body ? JSON.parse(req.body) : {});
-    const upstream = await fetch(`${base}/admin/auth/password-recovery`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+    const upstream = await fetch(`${base}/admin/${encodeURIComponent(String(adminId))}/subscription-plan`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', 'Authorization': auth as string },
       body: JSON.stringify(bodyObj ?? {}),
     });
     const text = await upstream.text();
