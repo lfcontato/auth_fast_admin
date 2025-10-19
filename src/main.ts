@@ -108,6 +108,30 @@ window.addEventListener('DOMContentLoaded', () => {
     }
   } catch {}
 
+  // Marcar itens que requerem autenticação com ícone de cadeado
+  try {
+    const addLock = (el: HTMLElement | null) => {
+      if (!el) return;
+      if (el.querySelector('.lock-icon')) return; // evita duplicar
+      const span = document.createElement('span');
+      span.className = 'lock-icon me-1';
+      span.setAttribute('aria-hidden', 'true');
+      span.textContent = '🔒';
+      // Inserir no início
+      if (el.firstChild) el.insertBefore(span, el.firstChild);
+      else el.appendChild(span);
+    };
+
+    // Botão de listar admins (usa Authorization Bearer)
+    addLock(document.getElementById('btn-admin-list'));
+
+    // Card "Criar Administrador" (toda a seção requer token)
+    const formAdmin = document.getElementById('form-admin-create');
+    const adminCard = formAdmin?.closest('.card') as HTMLElement | null;
+    const adminHeader = adminCard ? adminCard.querySelector('.card-header') as HTMLElement | null : null;
+    addLock(adminHeader);
+  } catch {}
+
   try {
     const nav: any = navigator as any;
     const uaCh = nav.userAgentData && typeof nav.userAgentData === 'object' ? {
