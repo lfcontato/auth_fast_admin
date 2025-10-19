@@ -92,6 +92,142 @@ async function checkServerlessAvailable() {
 }
 
 window.addEventListener('DOMContentLoaded', () => {
+  // Aviso de privacidade para o usuário (sem consentimento explícito)
+  try {
+    let notice = document.getElementById('privacy-notice') as HTMLDivElement | null;
+    if (!notice) {
+      const container = document.querySelector('main.container') as HTMLElement | null;
+      if (container) {
+        notice = document.createElement('div');
+        notice.id = 'privacy-notice';
+        notice.className = 'alert alert-info small';
+        notice.textContent = 'Aviso de privacidade: coletamos automaticamente IP, user-agent e preferências de idioma para operação e segurança (base legal: interesse legítimo/operacional). Não coletamos geolocalização precisa; a localização aproximada pode ser inferida por cabeçalhos da rede (ex.: país/cidade do provedor).';
+        const serverless = document.getElementById('serverless-warning');
+        container.insertBefore(notice, serverless ? serverless.nextSibling : container.firstChild);
+      }
+    }
+  } catch {}
+
+  try {
+    const nav: any = navigator as any;
+    const uaCh = nav.userAgentData && typeof nav.userAgentData === 'object' ? {
+      mobile: !!nav.userAgentData.mobile,
+      platform: nav.userAgentData.platform || '',
+      brands: Array.isArray(nav.userAgentData.brands) ? nav.userAgentData.brands : [],
+    } : null;
+    const conn: any = (nav.connection || (nav as any).mozConnection || (nav as any).webkitConnection || null);
+    const connection = conn ? {
+      effectiveType: conn.effectiveType || '',
+      downlink: typeof conn.downlink === 'number' ? conn.downlink : null,
+      rtt: typeof conn.rtt === 'number' ? conn.rtt : null,
+      saveData: !!conn.saveData,
+    } : null;
+
+    const client: Record<string, any> = {
+      // Locale e idioma
+      lang: nav.language || '',
+      languages: nav.languages || [],
+      docLang: (document.documentElement.getAttribute('lang') || document.documentElement.lang || ''),
+      locale: Intl.DateTimeFormat().resolvedOptions().locale,
+      // Tempo e fuso
+      tz: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      tzOffset: new Date().getTimezoneOffset(),
+      // Tela e viewport
+      dpr: (window as any).devicePixelRatio || 1,
+      viewport: { w: window.innerWidth, h: window.innerHeight },
+      screen: { w: (window as any).screen?.width || 0, h: (window as any).screen?.height || 0 },
+      // Plataforma / Agente
+      ua: nav.userAgent || '',
+      platform: nav.platform || '',
+      vendor: nav.vendor || '',
+      uaCh,
+      // Capacidades
+      cpu: nav.hardwareConcurrency ?? null,
+      mem: nav.deviceMemory ?? null,
+      touch: nav.maxTouchPoints ?? 0,
+      // Preferências do usuário
+      dark: (typeof matchMedia === 'function') && matchMedia('(prefers-color-scheme: dark)').matches || false,
+      reducedMotion: (typeof matchMedia === 'function') && matchMedia('(prefers-reduced-motion: reduce)').matches || false,
+      dnt: nav.doNotTrack ?? null,
+      // Estado e conexao
+      cookieEnabled: nav.cookieEnabled ?? null,
+      online: nav.onLine ?? null,
+      connection,
+      // Documento
+      referrer: document.referrer || '',
+      visibility: document.visibilityState || '',
+    };
+
+    // Função para renderizar na UI dentro do card "Estado"
+    const renderClientTelemetry = (obj: unknown) => {
+      try {
+        let pre = document.getElementById('client-telemetry') as HTMLPreElement | null;
+        if (!pre) {
+          const lastRespPre = document.getElementById('last-response');
+          const cardBody = lastRespPre?.closest('.card-body') as HTMLElement | null;
+          if (cardBody) {
+            const wrap = document.createElement('div');
+            wrap.className = 'mt-2';
+            const title = document.createElement('strong');
+            title.textContent = 'Telemetry (cliente):';
+            pre = document.createElement('pre');
+            pre.id = 'client-telemetry';
+            pre.className = 'mb-0 bg-light p-2 rounded';
+            pre.style.whiteSpace = 'pre-wrap';
+            pre.style.wordBreak = 'break-all';
+            wrap.appendChild(title);
+            wrap.appendChild(pre);
+            cardBody.appendChild(wrap);
+          }
+        }
+        if (pre) pre.textContent = JSON.stringify(obj, null, 2);
+      } catch {}
+    };
+
+    // Render inicial
+    renderClientTelemetry(client);
+
+    // Envio para o backend (não bloqueante)
+    const payload = JSON.stringify(client);
+    if ((navigator as any).sendBeacon) {
+      (navigator as any).sendBeacon('/api/telemetry', new Blob([payload], { type: 'application/json' }));
+    } else {
+      fetch('/api/telemetry', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: payload, keepalive: true, credentials: 'same-origin' }).catch(() => {});
+    }
+
+    // Enriquecimento assíncrono: IP e localização aproximada do servidor
+    try {
+      fetch('/api/whoami', { credentials: 'same-origin' })
+        .then(r => r.ok ? r.json() : null)
+        .then(j => {
+          if (!j) return;
+          client.server = {
+            ip: j.ip || '',
+            country: j.country || '',
+            region: j.region || '',
+            city: j.city || '',
+            timezone: j.timezone || '',
+          };
+          renderClientTelemetry(client);
+        })
+        .catch(() => {});
+    } catch {}
+
+    // Enriquecimento assíncrono: storage estimate
+    try {
+      const storageAny: any = (navigator as any).storage;
+      if (storageAny && typeof storageAny.estimate === 'function') {
+        storageAny.estimate()
+          .then((est: any) => {
+            client.storage = { usage: est?.usage ?? null, quota: est?.quota ?? null };
+            renderClientTelemetry(client);
+          })
+          .catch(() => {});
+      }
+    } catch {}
+
+  } catch {}
+
   checkServerlessAvailable();
   // restaura sessão
   fetch('/api/refresh', { method: 'POST', credentials: 'same-origin' })
