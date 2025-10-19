@@ -117,6 +117,24 @@ curl -X POST http://localhost:8080/admin/auth/token/refresh \
   -d '{"refresh_token":"<REFRESH_TOKEN_DO_LOGIN>"}'
 ```
 
+## Criar Administrador
+- Método: POST
+- Rota: `/admin/`
+- Autenticação: `Authorization: Bearer <ACCESS_TOKEN>` (papel do solicitante deve ser superior ao `system_role` alvo)
+- Corpo (JSON):
+  ```json
+  {"email":"novo@dominio.com","username":"novo_admin","password":"SenhaForte123","system_role":"user"}
+  ```
+- 201 Created
+  - Corpo:
+  ```json
+  {"success":true,"admin_id":1,"username":"novo_admin","email":"novo@dominio.com","system_role":"user"}
+  ```
+- 401/403: token ausente/inválido ou permissão insuficiente
+- 409: `email` ou `username` já existentes
+
+Observação: após a criação, um e-mail é enviado ao novo administrador usando o template configurado em `ADMIN_CREATED_TEMPLATE_NAME` (padrão `admin_created.html`).
+
 # Fluxo Recomendado para Clientes/IA
 1. Efetue login com `username` e `password` e armazene `access_token` e `refresh_token` de forma segura.
 2. Para chamadas a recursos protegidos, envie `Authorization: Bearer <access_token>`.
@@ -142,6 +160,68 @@ Passos:
   - `TOKEN_ACCESS_EXPIRE_SECONDS` (default 1800)
   - `TOKEN_REFRESH_EXPIRE_SECONDS` (default 2592000)
   - `ROOT_AUTH_USER`, `ROOT_AUTH_EMAIL`, `ROOT_AUTH_PASSWORD` (seed do usuário root na primeira execução)
+  - `LOG_LEVEL` (DEBUG, INFO, WARN, ERROR) – controla verbosidade de logs da API (requisições e eventos)
+
+## E-mails (SMTP)
+
+O serviço de e-mail está disponível em `internal/services/email` e suporta `STARTTLS`, `SSL/TLS` e envio sem TLS (apenas para ambientes controlados). Configure via `.env`:
+
+- `EMAIL_SERVER_USERNAME`, `EMAIL_SERVER_PASSWORD`
+- `EMAIL_SERVER_SMTP_HOST`, `EMAIL_SERVER_SMTP_PORT`
+- `EMAIL_SERVER_SMTP_ENCRYPTION` (valores: `STARTTLS`, `SSL/TLS`, `NONE`)
+- `EMAIL_FROM_ADDRESS`, `EMAIL_FROM_NAME`
+- `EMAIL_SERVER_TEMPLATE_DIR` (padrão: `template_email`)
+- `EMAIL_TEMPLATE_NAME`, `SECURITY_TEMPLATE_NAME`, `ADMIN_CREATED_TEMPLATE_NAME`
+- `EMAIL_CC_ADDRESSES`, `EMAIL_BCC_ADDRESSES` (separadas por vírgula)
+
+Exemplo de uso:
+
+```go
+import (
+  "context"
+  "time"
+  "github.com/lfcontato/auth_fast_api/internal/config"
+  emailsvc "github.com/lfcontato/auth_fast_api/internal/services/email"
+)
+
+func sendExample() error {
+  cfg := config.Load()
+  mailer := emailsvc.FromConfig(cfg)
+  ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+  defer cancel()
+  return mailer.Send(ctx, emailsvc.Params{
+    To: []string{"destinatario@exemplo.com"},
+    Subject: "Assunto de Teste",
+    TemplateName: cfg.EmailTemplateName,
+    Data: map[string]any{
+      "Title":   "Olá!",
+      "Message": "Este é um e-mail de teste.",
+    },
+  })
+}
+```
+
+Crie o template HTML em `template_email/email_notifications.html` (ou outro nome configurado):
+
+```html
+<html>
+  <body>
+    <h1>{{.Title}}</h1>
+    <p>{{.Message}}</p>
+  </body>
+</html>
+```
+
+Templates incluídos por padrão em `template_email/`:
+- `email_notifications.html` – Notificação genérica com `Title`, `Message`, `ActionURL`, `ActionText`, `FooterText`, `ExtraNote`.
+- `security_notifications.html` – Alertas de segurança com `Event`, `Time`, `IPAddress`, `UserAgent`, além de `Title/Message`.
+- `admin_created.html` – Boas-vindas ao novo admin com `Email`, `Username`, `SystemRole`, `CreatedByRole`, `LoginURL` (opcional).
+
+Para enviar o e-mail de criação de administrador, configure `ADMIN_CREATED_TEMPLATE_NAME=admin_created.html` (padrão já aplicado) e certifique-se de que o arquivo exista em `EMAIL_SERVER_TEMPLATE_DIR`.
+
+Notas por provedor:
+- Gmail: `smtp.gmail.com`, 587 `STARTTLS` (ou 465 `SSL/TLS`). Use App Password quando 2FA estiver ativo.
+- Outlook/Hotmail (Microsoft 365): `smtp.office365.com`, 587 `STARTTLS`.
 
 # Endpoints Planejados (Não implementados ainda)
 
