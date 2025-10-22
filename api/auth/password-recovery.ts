@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { getBaseApiFromEnv } from '../../_shared';
+import { getBaseApiFromEnv } from '../_lib/env';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') return res.status(405).json({ success: false, message: 'Method Not Allowed' });
@@ -20,4 +20,3 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(500).json({ success: false, message: 'Erro interno', detail: String(err?.message || err) });
   }
 }
-

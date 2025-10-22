@@ -1,6 +1,6 @@
-import type { VercelRequest, VercelResponse } from '@vercel/node';
+import type { VercelRequest } from '@vercel/node';
 
-export default function handler(req: VercelRequest, res: VercelResponse) {
+export function getClientIp(req: VercelRequest): string {
   const xfwd = req.headers['x-forwarded-for'];
   const xreal = req.headers['x-real-ip'];
   let ip = '';
@@ -8,12 +8,11 @@ export default function handler(req: VercelRequest, res: VercelResponse) {
   else if (Array.isArray(xfwd) && xfwd.length) ip = (xfwd[0] || '').trim();
   if (!ip && typeof xreal === 'string') ip = xreal.trim();
   if (!ip) ip = (req.socket as any)?.remoteAddress || '';
+  return ip;
+}
 
-  const out = {
-    ip,
-    ua: (req.headers['user-agent'] as string) || '',
-    acceptLanguage: (req.headers['accept-language'] as string) || '',
-    // Vercel Edge geolocation headers (quando disponíveis)
+export function getGeoFromHeaders(req: VercelRequest) {
+  return {
     country: (req.headers['x-vercel-ip-country'] as string) || '',
     region: (req.headers['x-vercel-ip-country-region'] as string) || '',
     city: (req.headers['x-vercel-ip-city'] as string) || '',
@@ -21,8 +20,17 @@ export default function handler(req: VercelRequest, res: VercelResponse) {
     latitude: (req.headers['x-vercel-ip-latitude'] as string) || '',
     longitude: (req.headers['x-vercel-ip-longitude'] as string) || '',
   };
+}
 
-  res.setHeader('Cache-Control', 'no-store');
-  return res.status(200).json(out);
+export function getClientHeaders(req: VercelRequest) {
+  return {
+    ua: (req.headers['user-agent'] as string) || '',
+    acceptLanguage: (req.headers['accept-language'] as string) || '',
+    referer: (req.headers['referer'] as string) || '',
+    origin: (req.headers['origin'] as string) || '',
+    secChUa: (req.headers['sec-ch-ua'] as string) || '',
+    secChUaMobile: (req.headers['sec-ch-ua-mobile'] as string) || '',
+    secChUaPlatform: (req.headers['sec-ch-ua-platform'] as string) || '',
+  };
 }
 

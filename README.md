@@ -5,13 +5,17 @@ Resumo
 - Funções Serverless na Vercel para login, refresh e health.
 - Usa `END_POINT_API` do `.env` exatamente como definido (ex.: `http://localhost:8080`).
 
-Estrutura
+ Estrutura
 - index.html – UI de login e ações (Health, Refresh)
 - src/main.ts – fluxo de autenticação + restauração de sessão
-- api/login.ts – POST /admin/auth/token (salva refresh HttpOnly)
-- api/refresh.ts – POST /admin/auth/token/refresh (rotaciona cookie)
-- api/health.ts – GET /healthz
-- api/logout.ts – apaga cookie de refresh
+- api/auth/login.ts – POST /admin/auth/token (salva refresh HttpOnly)
+- api/auth/refresh.ts – POST /admin/auth/token/refresh (rotaciona cookie)
+- api/auth/logout.ts – apaga cookie de refresh
+- api/admin/index.ts – GET/POST proxy de administradores
+- api/admin/password.ts – PATCH alterar senha do admin autenticado
+- api/system/health.ts – GET /healthz
+- api/system/whoami.ts – informações de IP/UA/geo a partir dos headers
+- api/system/telemetry.ts – logging de eventos do cliente
 - vercel.json – build estático para dist/
 
 Como rodar (local)

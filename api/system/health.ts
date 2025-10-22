@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { getBaseApiFromEnv } from './_shared';
+import { getBaseApiFromEnv } from '../_lib/env';
 
 export default async function handler(_req: VercelRequest, res: VercelResponse) {
   try {
@@ -11,4 +11,3 @@ export default async function handler(_req: VercelRequest, res: VercelResponse) 
     return res.status(500).json({ success: false, message: 'Erro interno', detail: String(err?.message || err) });
   }
 }
-

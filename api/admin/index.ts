@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { getBaseApiFromEnv } from './_shared';
+import { getBaseApiFromEnv } from '../_lib/env';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const auth = req.headers['authorization'] || req.headers['Authorization' as any];
@@ -10,7 +10,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
     try {
       const base = getBaseApiFromEnv();
-      // Paginação: offset e limit (default 0 e 20; máx 100)
       const q = req.query || {};
       const offRaw = Array.isArray(q.offset) ? q.offset[0] : (q.offset as string | undefined);
       const limRaw = Array.isArray(q.limit) ? q.limit[0] : (q.limit as string | undefined);
