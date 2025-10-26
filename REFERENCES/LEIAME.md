@@ -1,0 +1,1 @@
+Para construir o front, use estes arquivos, da pasta REFERENCES como fonte canônica

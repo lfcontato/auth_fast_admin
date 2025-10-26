@@ -1,0 +1,204 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Auth Fast API",
+    "version": "0.1.0",
+    "description": "Esquema OpenAPI consolidado das rotas Admin, Users, UsersSpaces e Tools (Faciendum/Automata)."
+  },
+  "servers": [
+    { "url": "http://localhost:8080", "description": "Local" },
+    { "url": "https://{host}", "variables": { "host": { "default": "example.com" } }, "description": "Prod (Vercel)" }
+  ],
+  "components": {
+    "securitySchemes": {
+      "BearerAuth": { "type": "http", "scheme": "bearer", "bearerFormat": "JWT" }
+    },
+    "schemas": {
+      "TokenResponse": {
+        "type": "object",
+        "properties": {
+          "success": { "type": "boolean" },
+          "access_token": { "type": "string" },
+          "refresh_token": { "type": "string" }
+        }
+      },
+      "Error": {
+        "type": "object",
+        "properties": {
+          "success": { "type": "boolean" },
+          "code": { "type": "string" },
+          "message": { "type": "string" }
+        }
+      },
+      "UserFields": {
+        "type": "object",
+        "properties": {
+          "password": { "type": "string", "description": "Opcional em fluxos de cadastro; gerada automaticamente quando omitida (política forte quando PASSWORD_POLICY_STRICT=true; caso contrário numérica de 8 dígitos)." },
+          "tools_role": { "type": "string", "enum": ["guest","user","admin","root"], "default": "guest" },
+          "subscription_plan": { "type": "string", "enum": ["trial","monthly","semiannual","annual","lifetime"], "default": "trial" }
+        }
+      }
+    }
+  },
+  "paths": {
+    "/healthz": {
+      "get": { "summary": "Healthcheck", "responses": { "200": { "description": "OK" } } }
+    },
+    
+    "/admin/auth/token": {
+      "post": {
+        "summary": "Login Admin",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "type": "object", "properties": {"username": {"type":"string"}, "password": {"type":"string"}}, "required": ["username","password"] } } }
+        },
+        "responses": { "200": { "description": "Tokens", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/TokenResponse" } } } }, "401": { "description": "Credenciais inválidas" } }
+      }
+    },
+    "/admin/auth/token/refresh": {
+      "post": {
+        "summary": "Refresh Admin",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": {"refresh_token": {"type":"string"}}, "required": ["refresh_token"] } } } },
+        "responses": { "200": { "description": "Tokens" }, "401": { "description": "Refresh inválido" } }
+      }
+    },
+    "/admin/auth/mfa/verify": {
+      "post": {
+        "summary": "Confirmar MFA por e-mail",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": {"mfa_tx": {"type":"string"}, "code": {"type":"string"}}, "required": ["mfa_tx","code"] } } } },
+        "responses": { "200": { "description": "Tokens liberados" }, "401": { "description": "Código inválido" } }
+      }
+    },
+    "/admin/auth/password-recovery": {
+      "post": {
+        "summary": "Recuperar senha (Admin)",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": {"email": {"type":"string","format":"email"}}, "required": ["email"] } } } },
+        "responses": { "200": { "description": "Sempre 200 (anti-enum)" } }
+      }
+    },
+    "/admin/auth/verify": {
+      "post": { "summary": "Verificar conta (código+senha)", "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": {"code":{"type":"string"},"password":{"type":"string"}}, "required": ["code","password"] } } } }, "responses": { "200": { "description": "Verificado" } } }
+    },
+    "/admin/auth/verify-code/{code}": {
+      "post": { "summary": "Verificar via link (código na URL)", "parameters": [{"in":"path","name":"code","required":true,"schema":{"type":"string"}}], "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": {"password":{"type":"string"}}, "required": ["password"] } } } }, "responses": { "200": { "description": "Verificado" } } }
+    },
+    "/admin": {
+      "get": { "summary": "Listar admins", "security": [{"BearerAuth":[]}], "responses": { "200": { "description": "OK" } } },
+      "post": {
+        "summary": "Criar admin",
+        "security": [{"BearerAuth":[]}],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type":"object",
+                "properties": {
+                  "email": {"type":"string","format":"email"},
+                  "username": {"type":"string"},
+                  "password": {"type":"string","description":"Opcional: se omitida, o sistema gera."},
+                  "system_role": {"type":"string","enum":["guest","user","admin","root"], "default":"guest"},
+                  "subscription_plan": {"type":"string","enum":["trial","monthly","semiannual","annual","lifetime"], "default":"trial"}
+                },
+                "required": ["email","username"]
+              }
+            }
+          }
+        },
+        "responses": { "201": { "description": "Criado" } }
+      }
+    },
+    "/admin/{admin_id}/subscription-plan": {
+      "patch": { "summary": "Alterar plano", "security": [{"BearerAuth":[]}], "parameters": [{"in":"path","name":"admin_id","required":true,"schema":{"type":"integer"}}], "requestBody": {"required": true, "content": {"application/json": {"schema": {"type":"object","properties":{"subscription_plan":{"type":"string"}}, "required":["subscription_plan"]}}}}, "responses": { "200": {"description":"OK"} } }
+    },
+    "/admin/{admin_id}/system-role": {
+      "patch": { "summary": "Alterar papel", "security": [{"BearerAuth":[]}], "parameters": [{"in":"path","name":"admin_id","required":true,"schema":{"type":"integer"}}], "requestBody": {"required": true, "content": {"application/json": {"schema": {"type":"object","properties":{"system_role":{"type":"string"}}, "required":["system_role"]}}}}, "responses": { "200": {"description":"OK"} } }
+    },
+    "/admin/password": {
+      "patch": { "summary": "Alterar senha (própria)", "security": [{"BearerAuth":[]}], "requestBody": {"required": true, "content": {"application/json": {"schema": {"type":"object","properties":{"current_password":{"type":"string"},"new_password":{"type":"string"}}, "required":["current_password","new_password"]}}}}, "responses": {"200": {"description":"OK"}} }
+    },
+    "/admin/mcp/token": {
+      "post": { "summary": "Criar PAT", "security": [{"BearerAuth":[]}], "requestBody": {"required": false, "content": {"application/json": {"schema": {"type":"object","properties":{"name":{"type":"string"},"ttl_hours":{"type":"integer"},"expires_at":{"type":"string","format":"date-time"}}}}}}, "responses": { "201": {"description":"Criado"} } }
+    },
+
+    "/user/auth/token": {
+      "post": { "summary": "Login Usuário", "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": {"username": {"type":"string"}, "password": {"type":"string"}}, "required": ["username","password"] } } } }, "responses": { "200": { "description": "Tokens" }, "401": { "description": "Credenciais/Verificação" } } }
+    },
+    "/user/auth/token/refresh": {
+      "post": { "summary": "Refresh Usuário", "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": {"refresh_token": {"type":"string"}}, "required": ["refresh_token"] } } } }, "responses": { "200": { "description": "Tokens" }, "401": { "description": "Refresh inválido" } } }
+    },
+    "/user/auth/verify": {
+      "post": { "summary": "Verificar conta (código+senha)", "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": {"code":{"type":"string"},"password":{"type":"string"}}, "required": ["code","password"] } } } }, "responses": { "200": { "description": "Verificado" } } }
+    },
+    "/user/auth/verify-link": {
+      "get": { "summary": "Verificar via link", "parameters": [{"in":"query","name":"login","required":true,"schema":{"type":"string"}},{"in":"query","name":"code","required":true,"schema":{"type":"string"}}], "responses": { "200": { "description": "OK" } } }
+    },
+    "/user/auth/password-recovery": {
+      "post": { "summary": "Recuperar senha (Usuário)", "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": {"email": {"type":"string","format":"email"}}, "required": ["email"] } } } }, "responses": { "200": { "description": "Sempre 200 (anti-enum)" } } }
+    },
+    "/user/auth/verification-code": {
+      "post": { "summary": "Reenviar código de verificação", "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": {"login": {"type":"string"}}, "required": ["login"] } } } }, "responses": { "200": { "description": "OK" } } }
+    },
+
+    "/user/spaces": {
+      "get": { "summary": "Listar UsersSpaces do usuário (owner)", "security": [{"BearerAuth":[]}], "responses": { "200": { "description": "OK" } } },
+      "post": { "summary": "Criar UsersSpace (tools_role=admin)", "security": [{"BearerAuth":[]}], "requestBody": {"required": true, "content": {"application/json": {"schema": {"type":"object","properties":{"name":{"type":"string"}}, "required":["name"]}}}}, "responses": { "201": {"description":"Criado"} } }
+    },
+    "/user/spaces/{space_id}/members": {
+      "get": { "summary": "Listar membros (owner)", "security": [{"BearerAuth":[]}], "parameters": [{"in":"path","name":"space_id","required":true,"schema":{"type":"integer"}}], "responses": { "200": { "description": "OK" } } },
+      "post": { "summary": "Adicionar membro (owner)", "security": [{"BearerAuth":[]}], "parameters": [{"in":"path","name":"space_id","required":true,"schema":{"type":"integer"}}], "requestBody": {"required": true, "content": {"application/json": {"schema": {"type":"object","properties":{"login":{"type":"string"},"role":{"type":"string","enum":["admin","user","guest"]}}, "required":["login","role"]}}}}, "responses": { "201": {"description":"Criado"} } }
+    },
+    "/user/spaces/{space_id}/members/{user_id}": {
+      "patch": { "summary": "Alterar papel (owner)", "security": [{"BearerAuth":[]}], "parameters": [{"in":"path","name":"space_id","required":true,"schema":{"type":"integer"}},{"in":"path","name":"user_id","required":true,"schema":{"type":"integer"}}], "requestBody": {"required": true, "content": {"application/json": {"schema": {"type":"object","properties":{"role":{"type":"string","enum":["admin","user","guest"]}}, "required":["role"]}}}}, "responses": { "200": {"description":"OK"} } },
+      "delete": { "summary": "Remover membro (owner)", "security": [{"BearerAuth":[]}], "parameters": [{"in":"path","name":"space_id","required":true,"schema":{"type":"integer"}},{"in":"path","name":"user_id","required":true,"schema":{"type":"integer"}}], "responses": { "200": { "description": "OK" } } }
+    },
+
+    "/user/spaces/{space_id}/faciendum/boards": {
+      "get": { "summary": "Listar boards", "security": [{"BearerAuth":[]}], "parameters": [{"in":"path","name":"space_id","required":true,"schema":{"type":"integer"}}], "responses": { "200": { "description": "OK" } } },
+      "post": { "summary": "Criar board (cria trilhas padrão)", "security": [{"BearerAuth":[]}], "parameters": [{"in":"path","name":"space_id","required":true,"schema":{"type":"integer"}}], "requestBody": {"required": true, "content": {"application/json": {"schema": {"type":"object","properties":{"name":{"type":"string"}}, "required":["name"]}}}}, "responses": { "201": {"description":"Criado"} } }
+    },
+    "/user/spaces/{space_id}/faciendum/boards/{board_id}": {
+      "patch": { "summary": "Renomear board", "security": [{"BearerAuth":[]}], "parameters": [{"in":"path","name":"space_id","required":true,"schema":{"type":"integer"}},{"in":"path","name":"board_id","required":true,"schema":{"type":"integer"}}], "requestBody": {"required": true, "content": {"application/json": {"schema": {"type":"object","properties":{"name":{"type":"string"}}, "required":["name"]}}}}, "responses": { "200": {"description":"OK"} } },
+      "delete": { "summary": "Excluir board (c/ tracks/tasks)", "security": [{"BearerAuth":[]}], "parameters": [{"in":"path","name":"space_id","required":true,"schema":{"type":"integer"}},{"in":"path","name":"board_id","required":true,"schema":{"type":"integer"}}], "responses": { "200": { "description": "OK" } } }
+    },
+    "/user/spaces/{space_id}/faciendum/tracks": {
+      "get": { "summary": "Listar trilhas de um board", "security": [{"BearerAuth":[]}], "parameters": [{"in":"path","name":"space_id","required":true,"schema":{"type":"integer"}},{"in":"query","name":"board_id","required":true,"schema":{"type":"integer"}}], "responses": { "200": { "description": "OK" } } },
+      "post": { "summary": "Criar trilha", "security": [{"BearerAuth":[]}], "parameters": [{"in":"path","name":"space_id","required":true,"schema":{"type":"integer"}}], "requestBody": {"required": true, "content": {"application/json": {"schema": {"type":"object","properties":{"board_id":{"type":"integer"},"name":{"type":"string"},"position":{"type":"integer"},"is_final":{"type":"boolean"}}, "required":["board_id","name"]}}}}, "responses": { "201": {"description":"Criado"} } }
+    },
+    "/user/spaces/{space_id}/faciendum/tracks/{track_id}": {
+      "patch": { "summary": "Atualizar trilha (renomear/reordenar/final)", "security": [{"BearerAuth":[]}], "parameters": [{"in":"path","name":"space_id","required":true,"schema":{"type":"integer"}},{"in":"path","name":"track_id","required":true,"schema":{"type":"integer"}}], "requestBody": {"required": true, "content": {"application/json": {"schema": {"type":"object","properties":{"name":{"type":"string"},"position":{"type":"integer"},"is_final":{"type":"boolean"}}}}}}, "responses": { "200": {"description":"OK"} } },
+      "delete": { "summary": "Excluir trilha vazia", "security": [{"BearerAuth":[]}], "parameters": [{"in":"path","name":"space_id","required":true,"schema":{"type":"integer"}},{"in":"path","name":"track_id","required":true,"schema":{"type":"integer"}}], "responses": { "200": { "description": "OK" } } }
+    },
+    "/user/spaces/{space_id}/faciendum/tasks": {
+      "get": { "summary": "Listar tasks (opcional por board)", "security": [{"BearerAuth":[]}], "parameters": [{"in":"path","name":"space_id","required":true,"schema":{"type":"integer"}},{"in":"query","name":"board_id","required":false,"schema":{"type":"integer"}}], "responses": { "200": { "description": "OK" } } },
+      "post": { "summary": "Criar task (primeira trilha)", "security": [{"BearerAuth":[]}], "parameters": [{"in":"path","name":"space_id","required":true,"schema":{"type":"integer"}}], "requestBody": {"required": true, "content": {"application/json": {"schema": {"type":"object","properties":{"board_id":{"type":"integer"},"title":{"type":"string"},"description":{"type":"string"}} , "required":["board_id","title"]}}}}, "responses": { "201": {"description":"Criado"} } }
+    },
+    "/user/spaces/{space_id}/faciendum/tasks/{task_id}": {
+      "patch": { "summary": "Atualizar task", "security": [{"BearerAuth":[]}], "parameters": [{"in":"path","name":"space_id","required":true,"schema":{"type":"integer"}},{"in":"path","name":"task_id","required":true,"schema":{"type":"integer"}}], "requestBody": {"required": true, "content": {"application/json": {"schema": {"type":"object","properties":{"title":{"type":"string"},"description":{"type":"string"}}}}}}, "responses": { "200": {"description":"OK"} } },
+      "delete": { "summary": "Excluir task", "security": [{"BearerAuth":[]}], "parameters": [{"in":"path","name":"space_id","required":true,"schema":{"type":"integer"}},{"in":"path","name":"task_id","required":true,"schema":{"type":"integer"}}], "responses": { "200": { "description": "OK" } } }
+    },
+    "/user/spaces/{space_id}/faciendum/tasks/{task_id}/move": {
+      "patch": { "summary": "Mover task entre trilhas / reordenar", "security": [{"BearerAuth":[]}], "parameters": [{"in":"path","name":"space_id","required":true,"schema":{"type":"integer"}},{"in":"path","name":"task_id","required":true,"schema":{"type":"integer"}}], "requestBody": {"required": true, "content": {"application/json": {"schema": {"type":"object","properties":{"to_track_id":{"type":"integer"},"position":{"type":"integer"}}, "required":["to_track_id"]}}}}, "responses": { "200": {"description":"OK"} } }
+    },
+
+    "/user/spaces/{space_id}/automata/keys": {
+      "get": { "summary": "Listar chaves da Automata", "security": [{"BearerAuth":[]}], "parameters": [{"in":"path","name":"space_id","required":true,"schema":{"type":"integer"}}], "responses": { "200": { "description": "OK" } } },
+      "post": { "summary": "Cadastrar chave de API", "security": [{"BearerAuth":[]}], "parameters": [{"in":"path","name":"space_id","required":true,"schema":{"type":"integer"}}], "requestBody": {"required": true, "content": {"application/json": {"schema": {"type":"object","properties":{"provider":{"type":"string"},"name":{"type":"string"},"api_key":{"type":"string"}}, "required":["provider","name","api_key"]}}}}, "responses": { "201": {"description":"Criado"} } }
+    },
+    "/user/spaces/{space_id}/automata/keys/{key_id}": {
+      "delete": { "summary": "Excluir chave de API", "security": [{"BearerAuth":[]}], "parameters": [{"in":"path","name":"space_id","required":true,"schema":{"type":"integer"}},{"in":"path","name":"key_id","required":true,"schema":{"type":"integer"}}], "responses": { "200": { "description": "OK" } } }
+    },
+    "/user/spaces/{space_id}/automata/prompts": {
+      "get": { "summary": "Listar prompts", "security": [{"BearerAuth":[]}], "parameters": [{"in":"path","name":"space_id","required":true,"schema":{"type":"integer"}}], "responses": { "200": { "description": "OK" } } },
+      "post": { "summary": "Cadastrar prompt", "security": [{"BearerAuth":[]}], "parameters": [{"in":"path","name":"space_id","required":true,"schema":{"type":"integer"}}], "requestBody": {"required": true, "content": {"application/json": {"schema": {"type":"object","properties":{"name":{"type":"string"},"description":{"type":"string"},"provider":{"type":"string"},"api_key_id":{"type":"integer"}}, "required":["name"]}}}}, "responses": { "201": {"description":"Criado"} } }
+    },
+    "/user/spaces/{space_id}/automata/prompts/{prompt_id}": {
+      "patch": { "summary": "Atualizar prompt", "security": [{"BearerAuth":[]}], "parameters": [{"in":"path","name":"space_id","required":true,"schema":{"type":"integer"}},{"in":"path","name":"prompt_id","required":true,"schema":{"type":"integer"}}], "requestBody": {"required": true, "content": {"application/json": {"schema": {"type":"object","properties":{"name":{"type":"string"},"description":{"type":"string"},"provider":{"type":"string"},"api_key_id":{"type":"integer"}}}}}}, "responses": { "200": {"description":"OK"} } },
+      "delete": { "summary": "Excluir prompt", "security": [{"BearerAuth":[]}], "parameters": [{"in":"path","name":"space_id","required":true,"schema":{"type":"integer"}},{"in":"path","name":"prompt_id","required":true,"schema":{"type":"integer"}}], "responses": { "200": { "description": "OK" } } }
+    },
+    "/user/spaces/{space_id}/automata/chats": {
+      "get": { "summary": "Listar chats", "security": [{"BearerAuth":[]}], "parameters": [{"in":"path","name":"space_id","required":true,"schema":{"type":"integer"}}], "responses": { "200": { "description": "OK" } } },
+      "post": { "summary": "Criar chat (execução simulada)", "security": [{"BearerAuth":[]}], "parameters": [{"in":"path","name":"space_id","required":true,"schema":{"type":"integer"}}], "requestBody": {"required": true, "content": {"application/json": {"schema": {"type":"object","properties":{"prompt_id":{"type":"integer"},"message":{"type":"string"}}, "required":["prompt_id","message"]}}}}, "responses": { "201": {"description":"Criado"} } }
+    }
+  }
+}

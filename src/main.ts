@@ -28,11 +28,11 @@ function scheduleAutoRefresh(token: string) {
 async function apiFetch(input: RequestInfo, init?: RequestInit): Promise<Response> {
   const url = typeof input === 'string' ? input : (input instanceof Request ? input.url : String(input ?? ''));
   const headers = new Headers(init?.headers || {});
-  if (accessToken && !(url && url.startsWith('/api/refresh'))) headers.set('Authorization', `Bearer ${accessToken}`);
+  if (accessToken && !(url && url.startsWith('/api/auth/refresh'))) headers.set('Authorization', `Bearer ${accessToken}`);
   const res = await fetch(input, { ...init, headers, credentials: 'same-origin' });
-  if (res.status !== 401 || (url && url.startsWith('/api/refresh'))) return res;
+  if (res.status !== 401 || (url && url.startsWith('/api/auth/refresh'))) return res;
   // tenta refresh 1x e refaz
-  const rr = await fetch('/api/refresh', { method: 'POST', credentials: 'same-origin' });
+  const rr = await fetch('/api/auth/refresh', { method: 'POST', credentials: 'same-origin' });
   if (rr.ok) {
     const j = await rr.json().catch(() => ({}));
     if (j?.access_token) {
@@ -70,7 +70,7 @@ function mapAuthCode(code?: string): string | null {
 }
 
 async function login(username: string, password: string) {
-  const r = await fetch('/api/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username, password }), credentials: 'same-origin' });
+  const r = await fetch('/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username, password }), credentials: 'same-origin' });
   const j = await r.json().catch(() => ({}));
   setText('#last-response', JSON.stringify(j, null, 2));
   if (r.status === 202 && j?.mfa_required) {
@@ -89,7 +89,7 @@ async function login(username: string, password: string) {
 
 async function verifyMfa(code: string) {
   if (!mfaTx) throw new Error('Transação MFA ausente. Faça login novamente.');
-  const r = await fetch('/api/admin/auth/mfa/verify', {
+  const r = await fetch('/api/auth/mfa/verify', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ mfa_tx: mfaTx, code }), credentials: 'same-origin'
   });
@@ -107,7 +107,7 @@ async function verifyMfa(code: string) {
 }
 
 async function forceRefresh() {
-  const r = await fetch('/api/refresh', { method: 'POST', credentials: 'same-origin' });
+  const r = await fetch('/api/auth/refresh', { method: 'POST', credentials: 'same-origin' });
   const j = await r.json().catch(() => ({}));
   setText('#last-response', JSON.stringify(j, null, 2));
   if (!r.ok) throw new Error(j?.message || `Refresh falhou (${r.status})`);
@@ -118,7 +118,7 @@ async function forceRefresh() {
 }
 
 async function health() {
-  const r = await fetch('/api/health');
+  const r = await fetch('/api/system/health');
   const j = await r.json().catch(() => ({}));
   setText('#last-response', JSON.stringify(j, null, 2));
 }
@@ -129,13 +129,13 @@ function clearSession() {
   setText('#jwt-payload', '—');
   setText('#last-response', '—');
   if (refreshTimer) { clearTimeout(refreshTimer); refreshTimer = null; }
-  fetch('/api/logout', { method: 'POST', credentials: 'same-origin' }).catch(() => {});
+  fetch('/api/auth/logout', { method: 'POST', credentials: 'same-origin' }).catch(() => {});
 }
 
 function showServerlessWarning() { const el = document.getElementById('serverless-warning'); if (el) el.style.display = ''; }
 async function checkServerlessAvailable() {
   try {
-    const r = await fetch('/api/health');
+    const r = await fetch('/api/system/health');
     if (!r.ok) showServerlessWarning();
     await r.json().catch(() => showServerlessWarning());
   } catch { showServerlessWarning(); }
@@ -198,6 +198,12 @@ window.addEventListener('DOMContentLoaded', () => {
     const pwdCard = formPwd?.closest('.card') as HTMLElement | null;
     const pwdHeader = pwdCard ? pwdCard.querySelector('.card-header') as HTMLElement | null : null;
     addLock(pwdHeader);
+
+    // Card "Criar Token MCP" (requer token)
+    const formMcp = document.getElementById('form-mcp-token');
+    const mcpCard = formMcp?.closest('.card') as HTMLElement | null;
+    const mcpHeader = mcpCard ? mcpCard.querySelector('.card-header') as HTMLElement | null : null;
+    addLock(mcpHeader);
   } catch {}
 
   try {
@@ -282,14 +288,14 @@ window.addEventListener('DOMContentLoaded', () => {
     // Envio para o backend (não bloqueante)
     const payload = JSON.stringify(client);
     if ((navigator as any).sendBeacon) {
-      (navigator as any).sendBeacon('/api/telemetry', new Blob([payload], { type: 'application/json' }));
+      (navigator as any).sendBeacon('/api/system/telemetry', new Blob([payload], { type: 'application/json' }));
     } else {
-      fetch('/api/telemetry', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: payload, keepalive: true, credentials: 'same-origin' }).catch(() => {});
+      fetch('/api/system/telemetry', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: payload, keepalive: true, credentials: 'same-origin' }).catch(() => {});
     }
 
     // Enriquecimento assíncrono: IP e localização aproximada do servidor
     try {
-      fetch('/api/whoami', { credentials: 'same-origin' })
+      fetch('/api/system/whoami', { credentials: 'same-origin' })
         .then(r => r.ok ? r.json() : null)
         .then(j => {
           if (!j) return;
@@ -322,7 +328,7 @@ window.addEventListener('DOMContentLoaded', () => {
 
   checkServerlessAvailable();
   // restaura sessão
-  fetch('/api/refresh', { method: 'POST', credentials: 'same-origin' })
+  fetch('/api/auth/refresh', { method: 'POST', credentials: 'same-origin' })
     .then(r => r.ok ? r.json() : null)
     .then(j => {
       if (j?.access_token) {
@@ -376,9 +382,11 @@ window.addEventListener('DOMContentLoaded', () => {
     const username = (document.getElementById('admin-username') as HTMLInputElement)?.value?.trim();
     const password = (document.getElementById('admin-password') as HTMLInputElement)?.value ?? '';
     const system_role = (document.getElementById('admin-role') as HTMLSelectElement)?.value ?? 'user';
+    const subscription_plan = (document.getElementById('admin-plan-create') as HTMLSelectElement | null)?.value || '';
     try {
       const payload: Record<string, unknown> = { email, username, system_role };
       if (password && password.trim() !== '') payload.password = password;
+      if (subscription_plan && subscription_plan !== '') payload.subscription_plan = subscription_plan;
       const r = await apiFetch('/api/admin', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload), credentials: 'same-origin' });
       const j = await r.json().catch(() => ({}));
       setText('#last-response', JSON.stringify(j, null, 2));
@@ -473,10 +481,29 @@ window.addEventListener('DOMContentLoaded', () => {
     const code = (document.getElementById('verify-code') as HTMLInputElement)?.value?.trim();
     const password = (document.getElementById('verify-password') as HTMLInputElement)?.value ?? '';
     try {
-      const r = await fetch(`/api/admin/auth/verify-code/${encodeURIComponent(code)}`, {
+      const r = await fetch(`/api/auth/verify-code/${encodeURIComponent(code)}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ password }),
+        credentials: 'same-origin',
+      });
+      const j = await r.json().catch(() => ({}));
+      setText('#last-response', JSON.stringify(j, null, 2));
+    } catch (err: any) {
+      setText('#last-response', String(err?.message || err));
+    }
+  });
+
+  // Verificar conta via body (POST /api/auth/verify)
+  document.getElementById('btn-code-verify-body')?.addEventListener('click', async () => {
+    try {
+      const code = (document.getElementById('verify-code') as HTMLInputElement)?.value?.trim();
+      const password = (document.getElementById('verify-password') as HTMLInputElement)?.value ?? '';
+      if (!code) { setText('#last-response', 'Informe o código.'); return; }
+      const r = await fetch(`/api/auth/verify`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code, password }),
         credentials: 'same-origin',
       });
       const j = await r.json().catch(() => ({}));
@@ -491,7 +518,7 @@ window.addEventListener('DOMContentLoaded', () => {
     try {
       const code = (document.getElementById('verify-code') as HTMLInputElement)?.value?.trim();
       if (!code) { setText('#last-response', 'Informe o código para gerar link.'); return; }
-      const r = await fetch(`/api/link/code-verified/${encodeURIComponent(code)}`);
+      const r = await fetch(`/api/admin/code-verified/${encodeURIComponent(code)}`);
       const j = await r.json().catch(() => ({}));
       if (r.ok && j?.url) {
         const out = document.getElementById('built-verify-link') as HTMLInputElement | null;
@@ -510,7 +537,7 @@ window.addEventListener('DOMContentLoaded', () => {
     e.preventDefault();
     const email = (document.getElementById('recovery-email') as HTMLInputElement)?.value?.trim();
     try {
-      const r = await fetch('/api/admin/auth/password-recovery', {
+      const r = await fetch('/api/auth/password-recovery', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email }),
@@ -518,6 +545,66 @@ window.addEventListener('DOMContentLoaded', () => {
       });
       const j = await r.json().catch(() => ({}));
       setText('#last-response', JSON.stringify(j, null, 2));
+    } catch (err: any) {
+      setText('#last-response', String(err?.message || err));
+    }
+  });
+
+  // Criar Token MCP (requer Authorization: Bearer)
+  const formMcpToken = document.getElementById('form-mcp-token') as HTMLFormElement | null;
+  formMcpToken?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const name = (document.getElementById('mcp-name') as HTMLInputElement)?.value?.trim();
+    const ttlRaw = (document.getElementById('mcp-ttl') as HTMLInputElement)?.value?.trim();
+    try {
+      if (!name) throw new Error('Informe o nome do token');
+      const payload: Record<string, unknown> = { name };
+      if (ttlRaw) {
+        const ttl = Number.parseInt(ttlRaw, 10);
+        if (Number.isFinite(ttl) && ttl > 0) payload.ttl_hours = ttl;
+      }
+      const r = await apiFetch('/api/admin/mcp/token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+        credentials: 'same-origin',
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        const msg = j?.message || `Erro (${r.status})`;
+        setText('#last-response', `${msg}\n${JSON.stringify(j, null, 2)}`);
+      } else {
+        setText('#last-response', JSON.stringify(j, null, 2));
+        const out = document.getElementById('mcp-token-out') as HTMLInputElement | null;
+        if (out) out.value = j?.token || '';
+      }
+    } catch (err: any) {
+      setText('#last-response', String(err?.message || err));
+    }
+  });
+
+  // Copiar token MCP
+  document.getElementById('btn-mcp-copy')?.addEventListener('click', async () => {
+    try {
+      const out = document.getElementById('mcp-token-out') as HTMLInputElement | null;
+      const val = out?.value || '';
+      if (!val) return;
+      await navigator.clipboard.writeText(val);
+      const btn = document.getElementById('btn-mcp-copy') as HTMLButtonElement | null;
+      if (btn) { const old = btn.textContent; btn.textContent = 'Copiado!'; setTimeout(() => { if (btn) btn.textContent = old || 'Copiar'; }, 1200); }
+    } catch {}
+  });
+
+  // Usar token MCP como Bearer (substitui access_token em memória)
+  document.getElementById('btn-mcp-use')?.addEventListener('click', async () => {
+    try {
+      const out = document.getElementById('mcp-token-out') as HTMLInputElement | null;
+      const val = out?.value?.trim() || '';
+      if (!val) { setText('#last-response', 'Nenhum token MCP disponível para usar.'); return; }
+      accessToken = val;
+      setText('#access-token', accessToken);
+      setText('#jwt-payload', '(API token opaco)');
+      if (refreshTimer) { clearTimeout(refreshTimer); refreshTimer = null; }
     } catch (err: any) {
       setText('#last-response', String(err?.message || err));
     }
@@ -533,5 +620,22 @@ window.addEventListener('DOMContentLoaded', () => {
       const tip = document.getElementById('verify-link-tip');
       if (tip) { tip.textContent = 'Código pré-preenchido a partir do link de verificação.'; tip.style.display = ''; }
     }
+  } catch {}
+
+  // Carregar configuração (END_POINT_API) para exibir na UI
+  try {
+    fetch('/api/system/config')
+      .then(r => r.ok ? r.json() : null)
+      .then(j => {
+        if (!j) return;
+        const baseEl = document.getElementById('api-base');
+        if (baseEl) baseEl.textContent = j.base || '(indefinido)';
+        const link = document.getElementById('openapi-link') as HTMLAnchorElement | null;
+        if (link) link.href = '/api/openapi.json';
+      })
+      .catch(() => {
+        const baseEl = document.getElementById('api-base');
+        if (baseEl) baseEl.textContent = '(erro ao obter)';
+      });
   } catch {}
 });
