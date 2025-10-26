@@ -258,6 +258,30 @@ Use estes exemplos para validar os fluxos de administrador em ambiente local.
 1. Diga o **domínio** alvo.
 2. Liste **arquivos/trechos** com caminhos e resumos de funções.
 3. Traga o **patch do README** (apenas o bloco a anexar).
+
+---
+
+## 10) Serverless (Vercel) – Limite de Funções (Hobby)
+
+Para evitar falhas de deploy no plano Hobby (limite de 12 Serverless Functions por deploy), siga estas regras ao criar/alterar endpoints no front/proxy:
+
+- Orçamento de funções: manter até 4 funções no projeto.
+  - api/auth/[...slug].ts – rotas de autenticação (login, refresh, logout, mfa/verify, verify, verify-code, password-recovery) e gestão de cookie HttpOnly.
+  - api/admin/[...slug].ts – rotas administrativas (GET/POST /admin, password, system-role, subscription-plan, mcp/token, helpers específicos como code-verified/{hash}).
+  - api/system/[...slug].ts – rotas de sistema (health, whoami, telemetry, config) e fallback se houver no backend.
+  - api/openapi.json.ts – proxy para o esquema OpenAPI.
+
+- Não criar novas funções individuais em `api/**` fora das acima. Em vez disso, estender o roteamento dentro dos catch‑alls correspondentes (adicionando novos cases/branches).
+
+- Justificativa: o deploy em produção falha ao exceder 12 funções no plano Hobby. O padrão catch‑all evita “explosão” de funções e simplifica manutenção.
+
+- Sempre que adicionar uma nova rota:
+  - Atualize o catch‑all correto (auth/admin/system).
+  - Mantenha consistência de headers, tratamento de erros e JSON pass‑through.
+  - Se envolver autenticação, preserve o padrão de Authorization: Bearer e cookies HttpOnly conforme domínio.
+  - Atualize README (Mapa de domínios) e crie/ajuste `docs/HOWTOUSE_{nome}.md`.
+
+- Se em algum momento for necessário particionar por performance, avaliar uso de Pro plan/equipe antes de quebrar o padrão acima.
 4. Entregue `docs/HOWTOUSE_{X}.md` completo.
 5. Inclua **exemplos cURL/HTTP** prontos para copiar/colar.
 6. Se algo for ambíguo, **assuma defaults sensatos** e documente.
